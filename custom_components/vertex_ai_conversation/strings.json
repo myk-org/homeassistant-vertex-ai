@@ -1,0 +1,98 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configure Vertex AI",
+        "description": "Enter your Google Cloud project details and service account credentials.",
+        "data": {
+          "project_id": "GCP Project ID",
+          "location": "Region/Location",
+          "service_account_json": "Service Account JSON"
+        },
+        "data_description": {
+          "project_id": "Your Google Cloud Platform project ID",
+          "location": "The region where Vertex AI is deployed (e.g., us-central1)",
+          "service_account_json": "Paste the entire contents of your service account JSON key file"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate Vertex AI",
+        "description": "Please provide updated credentials."
+      }
+    },
+    "error": {
+      "invalid_json": "Invalid JSON format in service account credentials",
+      "invalid_service_account": "Invalid service account JSON - missing required fields",
+      "invalid_auth": "Authentication failed - check your service account credentials",
+      "cannot_connect": "Unable to connect to Vertex AI - check your project ID and region",
+      "unknown": "An unexpected error occurred"
+    },
+    "abort": {
+      "already_configured": "This project is already configured"
+    }
+  },
+  "config_subentries": {
+    "conversation": {
+      "initiate_flow": {
+        "user": "Add Conversation Agent"
+      },
+      "step": {
+        "user": {
+          "title": "Conversation Agent Settings",
+          "data": {
+            "chat_model": "Model",
+            "prompt": "System Prompt",
+            "llm_hass_api": "Home Assistant API Access",
+            "temperature": "Temperature",
+            "top_p": "Top P",
+            "top_k": "Top K",
+            "max_tokens": "Max Tokens"
+          }
+        }
+      }
+    },
+    "tts": {
+      "initiate_flow": {
+        "user": "Add Text-to-Speech"
+      },
+      "step": {
+        "user": {
+          "title": "Text-to-Speech Settings",
+          "data": {
+            "tts_model": "Model"
+          }
+        }
+      }
+    },
+    "stt": {
+      "initiate_flow": {
+        "user": "Add Speech-to-Text"
+      },
+      "step": {
+        "user": {
+          "title": "Speech-to-Text Settings",
+          "data": {
+            "stt_model": "Model"
+          }
+        }
+      }
+    },
+    "ai_task_data": {
+      "initiate_flow": {
+        "user": "Add AI Task"
+      },
+      "step": {
+        "user": {
+          "title": "AI Task Settings",
+          "data": {
+            "chat_model": "Model",
+            "temperature": "Temperature",
+            "top_p": "Top P",
+            "top_k": "Top K",
+            "max_tokens": "Max Tokens"
+          }
+        }
+      }
+    }
+  }
+}
