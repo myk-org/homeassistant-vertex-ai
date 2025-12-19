@@ -22,6 +22,9 @@
     },
     "error": {
       "invalid_json": "Invalid JSON format in service account credentials",
+      "missing_fields": "Service account JSON is missing required fields (type, project_id, private_key, client_email)",
+      "invalid_type": "Service account type must be 'service_account'",
+      "connection_failed": "Unable to connect to Vertex AI - check your credentials, project ID, and region",
       "invalid_service_account": "Invalid service account JSON - missing required fields",
       "invalid_auth": "Authentication failed - check your service account credentials",
       "cannot_connect": "Unable to connect to Vertex AI - check your project ID and region",
