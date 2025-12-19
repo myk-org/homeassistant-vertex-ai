@@ -1,0 +1,14 @@
+{
+  "domain": "claude_vertex_ai_conversation",
+  "name": "Claude Vertex AI Conversation",
+  "codeowners": ["@myakove"],
+  "config_flow": true,
+  "dependencies": ["conversation"],
+  "after_dependencies": ["assist_pipeline", "intent"],
+  "documentation": "https://github.com/myakove/homeassistant-claude-vertex-ai",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/myakove/homeassistant-claude-vertex-ai/issues",
+  "requirements": ["anthropic[vertex]>=0.39.0", "google-auth>=2.0.0"],
+  "version": "1.0.0"
+}

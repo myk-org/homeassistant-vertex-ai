@@ -41,7 +41,7 @@ Before installing this integration, you need:
 2. Click on "Integrations"
 3. Click the three dots in the top right corner
 4. Select "Custom repositories"
-5. Add the repository URL: `https://github.com/myakove/homeassistant-vertex-ai`
+5. Add the repository URL: `https://github.com/myakove/homeassistant-claude-vertex-ai`
 6. Select category: "Integration"
 7. Click "Add"
 8. Click "Install" on the Vertex AI Conversation card
@@ -49,11 +49,11 @@ Before installing this integration, you need:
 
 ### Manual Installation
 
-1. Download the latest release from [GitHub releases](https://github.com/myakove/homeassistant-vertex-ai/releases)
-2. Extract the `vertex_ai_conversation` folder from the archive
+1. Download the latest release from [GitHub releases](https://github.com/myakove/homeassistant-claude-vertex-ai/releases)
+2. Extract the `claude_vertex_ai_conversation` folder from the archive
 3. Copy the folder to your Home Assistant `custom_components` directory:
    ```
-   /config/custom_components/vertex_ai_conversation/
+   /config/custom_components/claude_vertex_ai_conversation/
    ```
 4. Restart Home Assistant
 
@@ -65,7 +65,7 @@ Before installing this integration, you need:
 2. Select your project
 3. Go to "IAM & Admin" > "Service Accounts"
 4. Click "Create Service Account"
-5. Provide a name (e.g., "homeassistant-vertex-ai")
+5. Provide a name (e.g., "homeassistant-claude-vertex-ai")
 6. Click "Create and Continue"
 7. Grant the role: "Vertex AI User"
 8. Click "Continue" and then "Done"
@@ -153,7 +153,7 @@ automation:
     action:
       - service: conversation.process
         data:
-          agent_id: conversation.vertex_ai_conversation
+          agent_id: conversation.claude_vertex_ai_conversation
           text: "What should I do if someone is at my front door?"
 ```
 
@@ -271,7 +271,7 @@ Add to your `configuration.yaml`:
 logger:
   default: info
   logs:
-    custom_components.vertex_ai_conversation: debug
+    custom_components.claude_vertex_ai_conversation: debug
     google.auth: debug
 ```
 
@@ -279,7 +279,7 @@ Restart Home Assistant and check logs under Settings > System > Logs.
 
 ### Still Having Issues?
 
-1. Check the [GitHub Issues](https://github.com/myakove/homeassistant-vertex-ai/issues) page
+1. Check the [GitHub Issues](https://github.com/myakove/homeassistant-claude-vertex-ai/issues) page
 2. Review Home Assistant logs for detailed error messages
 3. Verify your GCP setup follows [Vertex AI documentation](https://cloud.google.com/vertex-ai/docs)
 4. Create a new issue with:
@@ -336,7 +336,7 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/myakove/homeassistant-vertex-ai/issues)
+- **Issues**: [GitHub Issues](https://github.com/myakove/homeassistant-claude-vertex-ai/issues)
 - **Documentation**: [Vertex AI Documentation](https://cloud.google.com/vertex-ai/docs)
 - **Home Assistant Community**: [Community Forum](https://community.home-assistant.io/)
 

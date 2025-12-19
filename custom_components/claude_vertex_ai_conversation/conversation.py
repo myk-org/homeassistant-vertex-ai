@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from google.genai.types import Content, Part
+from anthropic import AnthropicVertex
 
 from homeassistant.components import conversation
 from homeassistant.components.conversation import (
@@ -18,8 +18,7 @@ from homeassistant.const import CONF_LLM_HASS_API, MATCH_ALL
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import SUBENTRY_CONVERSATION
-from .entity import VertexAILLMBaseEntity
+from .const import DOMAIN, RECOMMENDED_CHAT_MODEL, RECOMMENDED_MAX_TOKENS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -36,31 +35,38 @@ async def async_setup_entry(
         config_entry: The config entry for this integration
         async_add_entities: Callback to add entities
     """
-    entities = []
-
-    # Iterate through subentries to find conversation entries
-    for subentry in config_entry.subentries:
-        if subentry.data.get("subentry_type") == SUBENTRY_CONVERSATION:
-            _LOGGER.debug(
-                "Creating conversation entity for subentry %s",
-                subentry.subentry_id,
-            )
-            entities.append(VertexAIConversationEntity(config_entry, subentry))
-
-    if entities:
-        async_add_entities(entities)
-        _LOGGER.info("Added %d Vertex AI conversation entities", len(entities))
+    # Create a single conversation entity for this config entry
+    _LOGGER.debug("Creating conversation entity for entry %s", config_entry.entry_id)
+    async_add_entities([VertexAIConversationEntity(hass, config_entry)])
+    _LOGGER.info("Added Vertex AI conversation entity")
 
 
 class VertexAIConversationEntity(
     ConversationEntity,
     conversation.AbstractConversationAgent,
-    VertexAILLMBaseEntity,
 ):
-    """Vertex AI conversation agent entity."""
+    """Vertex AI Claude conversation agent entity."""
 
-    _attr_supports_streaming = True
+    _attr_supports_streaming = False
     _attr_name = None
+    _attr_has_entity_name = True
+
+    def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry) -> None:
+        """Initialize the conversation entity.
+
+        Args:
+            hass: Home Assistant instance
+            config_entry: The config entry for this integration
+        """
+        self.hass = hass
+        self._config_entry = config_entry
+        self._attr_unique_id = f"{config_entry.entry_id}_conversation"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, config_entry.entry_id)},
+            "name": "Claude (Vertex AI)",
+            "manufacturer": "Anthropic",
+            "model": "Claude via Vertex AI",
+        }
 
     @property
     def supported_languages(self) -> list[str] | str:
@@ -79,9 +85,19 @@ class VertexAIConversationEntity(
             ConversationEntityFeature.CONTROL if LLM HASS API is configured,
             otherwise 0 (no additional features).
         """
-        if CONF_LLM_HASS_API in self.options:
+        options = self._config_entry.options
+        if CONF_LLM_HASS_API in options:
             return ConversationEntityFeature.CONTROL
         return ConversationEntityFeature(0)
+
+    @property
+    def client(self) -> AnthropicVertex:
+        """Return the Anthropic Vertex AI client.
+
+        Returns:
+            The authenticated AnthropicVertex client instance.
+        """
+        return self.hass.data[DOMAIN][self._config_entry.entry_id]["client"]
 
     async def async_added_to_hass(self) -> None:
         """When entity is added to hass, register as conversation agent."""
@@ -157,14 +173,12 @@ class VertexAIConversationEntity(
         Returns:
             ConversationResult with the agent's response
         """
-        # Get system prompt from options if configured
-        system_prompt = self.options.get("system_prompt")
-
-        # Convert chat log to Vertex AI Content format
-        contents = self._convert_chat_log_to_contents(chat_log, user_input)
-
-        # Get model name
-        model_name = self.get_model_name()
+        # Get configuration from options
+        options = self._config_entry.options
+        system_prompt = options.get("system_prompt")
+        model_name = options.get("model", RECOMMENDED_CHAT_MODEL)
+        max_tokens = options.get("max_tokens", RECOMMENDED_MAX_TOKENS)
+        temperature = options.get("temperature", 1.0)
 
         _LOGGER.debug(
             "Generating content with model %s (system prompt: %s)",
@@ -172,34 +186,34 @@ class VertexAIConversationEntity(
             "configured" if system_prompt else "not configured",
         )
 
-        # Create generation config
-        config = self.create_generate_content_config()
+        # Convert chat log to Anthropic messages format
+        messages = self._convert_chat_log_to_messages(chat_log, user_input)
 
-        # Build kwargs for generate_content
-        generate_kwargs: dict[str, Any] = {
+        # Build kwargs for messages.create
+        create_kwargs: dict[str, Any] = {
             "model": model_name,
-            "contents": contents,
-            "config": config,
+            "max_tokens": max_tokens,
+            "messages": messages,
+            "temperature": temperature,
         }
 
-        # Add system instruction if provided
+        # Add system prompt if provided
         if system_prompt:
-            generate_kwargs["system_instruction"] = system_prompt
+            create_kwargs["system"] = system_prompt
 
         try:
-            # Call Vertex AI to generate content
+            # Call Anthropic Vertex AI to generate content
             # Run in executor since this is a blocking I/O operation
             response = await self.hass.async_add_executor_job(
-                self._generate_content_sync,
-                generate_kwargs,
+                lambda: self.client.messages.create(**create_kwargs)
             )
 
-            # Extract response text
-            response_text = self._extract_response_text(response)
+            # Extract response text from the first content block
+            response_text = response.content[0].text
 
             _LOGGER.debug("Generated response: %s", response_text[:100])
 
-            # Add response to chat log
+            # Add messages to chat log
             chat_log.append({"role": "user", "content": user_input})
             chat_log.append({"role": "assistant", "content": response_text})
 
@@ -218,7 +232,7 @@ class VertexAIConversationEntity(
             )
 
         except Exception as err:
-            _LOGGER.error("Error generating conversation response: %s", err)
+            _LOGGER.error("Error generating conversation response: %s", err, exc_info=True)
 
             # Return error response
             error_message = (
@@ -239,87 +253,39 @@ class VertexAIConversationEntity(
                 conversation_id=chat_log,
             )
 
-    def _generate_content_sync(self, kwargs: dict[str, Any]) -> Any:
-        """Generate content synchronously (for executor).
-
-        Args:
-            kwargs: Keyword arguments for generate_content
-
-        Returns:
-            The generated content response
-        """
-        return self.client.models.generate_content(**kwargs)
-
-    def _convert_chat_log_to_contents(
+    def _convert_chat_log_to_messages(
         self,
         chat_log: list[dict[str, Any]],
         current_input: str,
-    ) -> list[Content]:
-        """Convert chat log to Vertex AI Content format.
+    ) -> list[dict[str, str]]:
+        """Convert chat log to Anthropic messages format.
 
         Args:
             chat_log: List of previous conversation messages
             current_input: The current user input
 
         Returns:
-            List of Content objects for Vertex AI
+            List of message dicts for Anthropic API
         """
-        contents = []
+        messages = []
 
         # Add previous messages from chat log
         for message in chat_log:
             role = message.get("role", "user")
             content_text = message.get("content", "")
 
-            # Map roles to Vertex AI format
-            # Vertex AI uses "user" and "model" roles
-            vertex_role = "model" if role == "assistant" else "user"
-
-            contents.append(
-                Content(
-                    role=vertex_role,
-                    parts=[Part(text=content_text)],
-                )
-            )
+            # Anthropic uses "user" and "assistant" roles
+            messages.append({
+                "role": role,
+                "content": content_text,
+            })
 
         # Add current user input
-        contents.append(
-            Content(
-                role="user",
-                parts=[Part(text=current_input)],
-            )
-        )
+        messages.append({
+            "role": "user",
+            "content": current_input,
+        })
 
-        _LOGGER.debug("Converted %d messages to Content format", len(contents))
+        _LOGGER.debug("Converted %d messages to Anthropic format", len(messages))
 
-        return contents
-
-    def _extract_response_text(self, response: Any) -> str:
-        """Extract text from Vertex AI response.
-
-        Args:
-            response: The Vertex AI generate_content response
-
-        Returns:
-            The extracted text content
-
-        Raises:
-            ValueError: If response has no text content
-        """
-        # The response should have a text attribute
-        if hasattr(response, "text"):
-            return response.text
-
-        # Fallback: try to extract from candidates
-        if hasattr(response, "candidates") and response.candidates:
-            candidate = response.candidates[0]
-            if hasattr(candidate, "content") and hasattr(candidate.content, "parts"):
-                parts_text = []
-                for part in candidate.content.parts:
-                    if hasattr(part, "text"):
-                        parts_text.append(part.text)
-                if parts_text:
-                    return "".join(parts_text)
-
-        _LOGGER.error("Could not extract text from response: %s", response)
-        raise ValueError("No text content in response")
+        return messages

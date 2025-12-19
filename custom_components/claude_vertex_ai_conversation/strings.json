@@ -1,0 +1,35 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "title": "Configure Claude via Vertex AI",
+                "description": "Enter your Google Cloud project details and credentials to use Anthropic Claude via Vertex AI.",
+                "data": {
+                    "project_id": "GCP Project ID",
+                    "location": "Region/Location",
+                    "service_account_json": "Credentials JSON",
+                },
+                "data_description": {
+                    "project_id": "Your Google Cloud Platform project ID with Vertex AI and Claude API access",
+                    "location": "The region where Claude on Vertex AI is available (e.g., us-east5)",
+                    "service_account_json": "Paste the entire contents of your service account JSON key file OR authorized_user OAuth credentials",
+                },
+            },
+            "reauth_confirm": {
+                "title": "Re-authenticate Claude via Vertex AI",
+                "description": "Please provide updated credentials.",
+            },
+        },
+        "error": {
+            "invalid_json": "Invalid JSON format in credentials",
+            "missing_fields": "Credentials JSON is missing required fields. For service_account: type, project_id, private_key, client_email. For authorized_user: type, client_id, client_secret, refresh_token",
+            "invalid_type": "Credential type must be 'service_account' or 'authorized_user'",
+            "connection_failed": "Unable to connect to Claude via Vertex AI - check your credentials, project ID, and region. Ensure Claude API is enabled in your GCP project.",
+            "invalid_service_account": "Invalid credentials JSON - missing required fields",
+            "invalid_auth": "Authentication failed - check your credentials",
+            "cannot_connect": "Unable to connect to Vertex AI - check your project ID and region",
+            "unknown": "An unexpected error occurred",
+        },
+        "abort": {"already_configured": "This project is already configured"},
+    }
+}
