@@ -1,14 +1,13 @@
 {
   "domain": "claude_vertex_ai_conversation",
-  "name": "Claude Vertex AI Conversation",
-  "codeowners": ["@myakove"],
+  "version": "1.0.0",
+  "name": "Claude Vertex AI",
+  "after_dependencies": ["assist_pipeline", "intent"],
+  "codeowners": ["@Shulyaka"],
   "config_flow": true,
   "dependencies": ["conversation"],
-  "after_dependencies": ["assist_pipeline", "intent"],
-  "documentation": "https://github.com/myakove/homeassistant-claude-vertex-ai",
+  "documentation": "https://www.home-assistant.io/integrations/anthropic",
   "integration_type": "service",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/myakove/homeassistant-claude-vertex-ai/issues",
-  "requirements": ["anthropic[vertex]>=0.39.0", "google-auth>=2.0.0"],
-  "version": "1.0.0"
+  "requirements": ["anthropic[vertex]==0.75.0", "google-auth>=2.0.0"]
 }

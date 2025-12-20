@@ -1,59 +1,114 @@
 {
-    "config": {
-        "step": {
-            "user": {
-                "title": "Configure Claude via Vertex AI",
-                "description": "Enter your Google Cloud project details and credentials to use Anthropic Claude via Vertex AI.",
-                "data": {
-                    "project_id": "GCP Project ID",
-                    "location": "Region/Location",
-                    "service_account_json": "Credentials JSON"
-                },
-                "data_description": {
-                    "project_id": "Your Google Cloud Platform project ID with Vertex AI and Claude API access",
-                    "location": "The region where Claude on Vertex AI is available (e.g., us-east5)",
-                    "service_account_json": "Paste the entire contents of your service account JSON key file OR authorized_user OAuth credentials"
-                }
-            },
-            "reauth_confirm": {
-                "title": "Re-authenticate Claude via Vertex AI",
-                "description": "Please provide updated credentials."
-            }
-        },
-        "error": {
-            "invalid_json": "Invalid JSON format in credentials",
-            "missing_fields": "Credentials JSON is missing required fields. For service_account: type, project_id, private_key, client_email. For authorized_user: type, client_id, client_secret, refresh_token",
-            "invalid_type": "Credential type must be 'service_account' or 'authorized_user'",
-            "connection_failed": "Unable to connect to Claude via Vertex AI - check your credentials, project ID, and region. Ensure Claude API is enabled in your GCP project.",
-            "invalid_service_account": "Invalid credentials JSON - missing required fields",
-            "invalid_auth": "Authentication failed - check your credentials",
-            "cannot_connect": "Unable to connect to Vertex AI - check your project ID and region",
-            "unknown": "An unexpected error occurred"
-        },
-        "abort": {
-            "already_configured": "This project is already configured"
-        }
+  "config": {
+    "abort": {
+      "already_configured": "[%key:common::config_flow::abort::already_configured_service%]"
     },
-    "options": {
-        "step": {
-            "init": {
-                "title": "Claude Options",
-                "description": "Configure Claude model settings and behavior",
-                "data": {
-                    "model": "Model",
-                    "system_prompt": "System Prompt",
-                    "max_tokens": "Maximum Tokens",
-                    "temperature": "Temperature",
-                    "llm_hass_api": "Home Assistant Control"
-                },
-                "data_description": {
-                    "model": "The Claude model to use for conversations",
-                    "system_prompt": "Custom instructions to guide Claude's behavior (supports templates)",
-                    "max_tokens": "Maximum number of tokens in the response (1-200000)",
-                    "temperature": "Controls randomness in responses (0.0 = focused, 2.0 = creative)",
-                    "llm_hass_api": "Allow Claude to control Home Assistant devices and services"
-                }
-            }
+    "error": {
+      "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
+      "invalid_json": "Invalid JSON in service account credentials",
+      "unknown": "[%key:common::config_flow::error::unknown%]"
+    },
+    "step": {
+      "user": {
+        "data": {
+          "project_id": "Google Cloud Project ID",
+          "location": "Vertex AI Location",
+          "service_account_json": "Service Account JSON"
         }
+      }
     }
+  },
+  "config_subentries": {
+    "ai_task_data": {
+      "abort": {
+        "entry_not_loaded": "Cannot add things while the configuration is disabled.",
+        "reconfigure_successful": "[%key:common::config_flow::abort::reconfigure_successful%]"
+      },
+      "entry_type": "AI task",
+      "initiate_flow": {
+        "reconfigure": "Reconfigure AI task",
+        "user": "Add AI task"
+      },
+      "step": {
+        "advanced": {
+          "data": {
+            "chat_model": "[%key:common::generic::model%]",
+            "max_tokens": "Maximum tokens to return in response",
+            "temperature": "Temperature"
+          },
+          "title": "Advanced settings"
+        },
+        "init": {
+          "data": {
+            "name": "[%key:common::config_flow::data::name%]",
+            "recommended": "Recommended model settings"
+          },
+          "title": "Basic settings"
+        },
+        "model": {
+          "data": {
+            "thinking_budget": "Thinking budget",
+            "user_location": "Include home location",
+            "web_search": "Enable web search",
+            "web_search_max_uses": "Maximum web searches"
+          },
+          "data_description": {
+            "thinking_budget": "The number of tokens the model can use to think about the response out of the total maximum number of tokens. Set to 1024 or greater to enable extended thinking.",
+            "user_location": "Localize search results based on home location",
+            "web_search": "The web search tool gives Claude direct access to real-time web content, allowing it to answer questions with up-to-date information beyond its knowledge cutoff",
+            "web_search_max_uses": "Limit the number of searches performed per response"
+          },
+          "title": "Model-specific options"
+        }
+      }
+    },
+    "conversation": {
+      "abort": {
+        "entry_not_loaded": "Cannot add things while the configuration is disabled.",
+        "reconfigure_successful": "[%key:common::config_flow::abort::reconfigure_successful%]"
+      },
+      "entry_type": "Conversation agent",
+      "initiate_flow": {
+        "reconfigure": "Reconfigure conversation agent",
+        "user": "Add conversation agent"
+      },
+      "step": {
+        "advanced": {
+          "data": {
+            "chat_model": "[%key:common::generic::model%]",
+            "max_tokens": "Maximum tokens to return in response",
+            "temperature": "Temperature"
+          },
+          "title": "Advanced settings"
+        },
+        "init": {
+          "data": {
+            "llm_hass_api": "[%key:common::config_flow::data::llm_hass_api%]",
+            "name": "[%key:common::config_flow::data::name%]",
+            "prompt": "[%key:common::config_flow::data::prompt%]",
+            "recommended": "Recommended model settings"
+          },
+          "data_description": {
+            "prompt": "Instruct how the LLM should respond. This can be a template."
+          },
+          "title": "Basic settings"
+        },
+        "model": {
+          "data": {
+            "thinking_budget": "Thinking budget",
+            "user_location": "Include home location",
+            "web_search": "Enable web search",
+            "web_search_max_uses": "Maximum web searches"
+          },
+          "data_description": {
+            "thinking_budget": "The number of tokens the model can use to think about the response out of the total maximum number of tokens. Set to 1024 or greater to enable extended thinking.",
+            "user_location": "Localize search results based on home location",
+            "web_search": "The web search tool gives Claude direct access to real-time web content, allowing it to answer questions with up-to-date information beyond its knowledge cutoff",
+            "web_search_max_uses": "Limit the number of searches performed per response"
+          },
+          "title": "Model-specific options"
+        }
+      }
+    }
+  }
 }

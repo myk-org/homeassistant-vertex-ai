@@ -1,17 +1,20 @@
-# Vertex AI Conversation for Home Assistant
+# Claude Vertex AI Conversation for Home Assistant
 
-A comprehensive Home Assistant integration that brings Google Cloud's Vertex AI Gemini models to your smart home. This integration provides conversation AI, text-to-speech, speech-to-text, and AI task capabilities powered by Google's latest Gemini models.
+A Home Assistant integration that brings Anthropic's Claude AI models to your smart home via Google Cloud Vertex AI. This integration provides conversation AI and AI task capabilities powered by Claude's advanced language models through Google Cloud's infrastructure.
+
+## Overview
+
+This integration is based on the official Home Assistant [Anthropic component](https://www.home-assistant.io/integrations/anthropic/) but adapted to use Google Cloud Vertex AI instead of Anthropic's API directly. This allows you to leverage Claude models through your existing Google Cloud Platform infrastructure.
 
 ## Features
 
-- **Conversation Agent**: Natural language conversation using Gemini 2.5 Flash and other Vertex AI models
-- **Text-to-Speech (TTS)**: Generate natural-sounding speech from text using Gemini TTS models
-- **Speech-to-Text (STT)**: Convert spoken audio to text with high accuracy
+- **Conversation Agent**: Natural language conversation using Claude models via Vertex AI
 - **AI Tasks**: Execute complex AI-powered tasks and automation
-- **Multiple Model Support**: Access various Gemini models including Flash, Pro, and specialized variants
-- **Configurable Parameters**: Fine-tune temperature, top-p, top-k, and max tokens for optimal responses
-- **Safety Controls**: Built-in content safety filtering with configurable thresholds
-- **Cloud Integration**: Leverages Google Cloud's powerful infrastructure for reliable AI processing
+- **Tool Calling**: Claude can interact with your Home Assistant devices and services
+- **Extended Thinking**: Enable deeper reasoning for complex queries
+- **Web Search**: Allow Claude to search the web for up-to-date information (when supported)
+- **Multiple Model Support**: Access various Claude models including Sonnet and Opus variants
+- **Configurable Parameters**: Fine-tune temperature, max tokens, and thinking settings for optimal responses
 
 ## Prerequisites
 
@@ -28,6 +31,7 @@ Before installing this integration, you need:
 3. **Vertex AI API Enabled**
    - Navigate to [Vertex AI API](https://console.cloud.google.com/apis/library/aiplatform.googleapis.com)
    - Click "Enable" for your project
+   - Ensure Claude models are available in your selected region
 
 4. **Service Account with Proper Permissions**
    - Service account with "Vertex AI User" role
@@ -44,7 +48,7 @@ Before installing this integration, you need:
 5. Add the repository URL: `https://github.com/myakove/homeassistant-claude-vertex-ai`
 6. Select category: "Integration"
 7. Click "Add"
-8. Click "Install" on the Vertex AI Conversation card
+8. Click "Install" on the Claude Vertex AI Conversation card
 9. Restart Home Assistant
 
 ### Manual Installation
@@ -65,7 +69,7 @@ Before installing this integration, you need:
 2. Select your project
 3. Go to "IAM & Admin" > "Service Accounts"
 4. Click "Create Service Account"
-5. Provide a name (e.g., "homeassistant-claude-vertex-ai")
+5. Provide a name (e.g., "homeassistant-claude-vertex")
 6. Click "Create and Continue"
 7. Grant the role: "Vertex AI User"
 8. Click "Continue" and then "Done"
@@ -80,22 +84,22 @@ Before installing this integration, you need:
 
 1. Go to Settings > Devices & Services
 2. Click "Add Integration"
-3. Search for "Vertex AI Conversation"
+3. Search for "Claude Vertex AI Conversation"
 4. Fill in the required fields:
    - **Project ID**: Your GCP project ID (found in GCP Console)
-   - **Location**: GCP region for Vertex AI (default: `us-central1`)
-     - Available regions: `us-central1`, `us-east1`, `us-west1`, `europe-west1`, `asia-northeast1`, etc.
+   - **Location**: GCP region where Claude models are available (e.g., `us-east5`)
+     - Check [Vertex AI Model Garden](https://console.cloud.google.com/vertex-ai/model-garden) for Claude availability in your region
    - **Service Account JSON**: Paste the entire contents of your downloaded JSON key file
 5. Click "Submit"
 6. Wait for validation (the integration will verify your credentials and connection)
 
-### Step 3: Configure Conversation Agent (Optional)
+### Step 3: Configure Conversation Agent
 
-After adding the integration, you can configure individual components:
+After adding the integration:
 
 1. Go to Settings > Voice Assistants
 2. Select or create an assistant
-3. Choose "Vertex AI Conversation" as the conversation agent
+3. Choose "Claude Vertex AI Conversation" as the conversation agent
 4. Configure your preferred model and parameters
 
 ## Configuration Fields Explained
@@ -104,12 +108,12 @@ After adding the integration, you can configure individual components:
 Your Google Cloud project identifier. Found in the GCP Console dashboard or in your service account JSON file.
 
 ### Location
-The GCP region where Vertex AI API requests will be processed. Choose a region close to your Home Assistant instance for better latency:
-- `us-central1` (Iowa, USA) - Default
-- `us-east1` (South Carolina, USA)
-- `us-west1` (Oregon, USA)
-- `europe-west1` (Belgium)
-- `asia-northeast1` (Tokyo, Japan)
+The GCP region where Vertex AI API requests will be processed. Claude models are available in specific regions:
+- `us-east5` (Columbus, USA) - Recommended for Claude models
+- `europe-west1` (Belgium) - Check availability
+- `asia-southeast1` (Singapore) - Check availability
+
+**Important**: Not all Vertex AI regions support Claude models. Check [Vertex AI Model Garden](https://console.cloud.google.com/vertex-ai/model-garden) to verify Claude availability in your preferred region.
 
 Full list: [Vertex AI Locations](https://cloud.google.com/vertex-ai/docs/general/locations)
 
@@ -136,6 +140,58 @@ Example structure:
 }
 ```
 
+## Available Models
+
+Claude models available through Vertex AI (availability varies by region):
+
+The following models are available as documented in the [official Google Cloud Vertex AI documentation](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/partner-models/claude):
+
+### Claude 4.5 Series
+- `claude-haiku-4-5` - Fast and efficient model (Recommended for routine tasks)
+- `claude-sonnet-4-5` - Balanced performance and capability (Recommended for most use cases)
+- `claude-opus-4-5` - Most capable model for complex tasks
+
+### Claude 4.1 Series
+- `claude-opus-4-1` - Advanced model for complex reasoning
+
+### Claude 4 Series
+- `claude-opus-4` - Capable model for complex tasks
+- `claude-sonnet-4` - Balanced performance model
+
+### Claude 3.5 Series
+- `claude-3-5-haiku` - Fast and efficient model
+
+### Claude 3 Series
+- `claude-3-haiku` - Fastest model for simple tasks
+
+**Note**: Model availability depends on your GCP region and Vertex AI access. Check the [Vertex AI Model Garden](https://console.cloud.google.com/vertex-ai/model-garden) for the latest available models in your region.
+
+**Important**: Unlike the direct Anthropic API, Vertex AI does NOT use the `-latest` suffix for model names. Use the exact model names listed above.
+
+### Model Parameters
+
+Customize model behavior in the integration options:
+
+- **Temperature** (0.0-1.0): Controls randomness
+  - Lower (0.0-0.3): More focused and deterministic
+  - Medium (0.4-0.7): Balanced creativity
+  - Higher (0.8-1.0): More creative and varied
+  - Default: 1.0
+
+- **Max Tokens**: Maximum response length (1-4096)
+  - Default: 1024
+  - Increase for longer, detailed responses
+  - Decrease to limit token usage and costs
+
+- **Recommended Safe Prompt**: Add safety instructions to prompts
+  - Default: Enabled
+  - Helps prevent harmful or inappropriate responses
+
+- **Extended Thinking**: Enable Claude's extended reasoning capabilities
+  - Default: Disabled
+  - Useful for complex problem-solving tasks
+  - May increase response time and token usage
+
 ## Usage Examples
 
 ### Conversation Agent
@@ -145,7 +201,7 @@ Ask natural language questions through Home Assistant:
 ```yaml
 # In automations.yaml
 automation:
-  - alias: "Ask Vertex AI"
+  - alias: "Ask Claude about front door"
     trigger:
       - platform: state
         entity_id: binary_sensor.front_door
@@ -154,62 +210,52 @@ automation:
       - service: conversation.process
         data:
           agent_id: conversation.claude_vertex_ai_conversation
-          text: "What should I do if someone is at my front door?"
+          text: "Someone is at my front door. What actions should I take?"
 ```
 
-### Text-to-Speech
+### AI Tasks
 
-Generate speech from text:
+Use Claude for complex reasoning tasks:
 
 ```yaml
 # In scripts.yaml
 script:
-  announce_weather:
+  analyze_energy_usage:
     sequence:
-      - service: tts.speak
-        target:
-          entity_id: media_player.living_room
+      - service: anthropic.generate_content
         data:
-          media_player_entity_id: media_player.living_room
-          message: "Good morning! Today's weather looks beautiful."
-          options:
-            voice: "en-US-Neural2-A"
+          agent_id: conversation.claude_vertex_ai_conversation
+          prompt: "Analyze my home's energy usage patterns and suggest optimizations"
+        response_variable: analysis
+      - service: notify.mobile_app
+        data:
+          message: "{{ analysis.content }}"
 ```
 
 ### Voice Assistant Integration
 
 1. Go to Settings > Voice Assistants
 2. Create a new assistant or edit existing
-3. Select "Vertex AI Conversation" as the Conversation Agent
-4. Optionally select "Vertex AI TTS" and "Vertex AI STT"
-5. Test with "Hey Google" or your wake word
+3. Select "Claude Vertex AI Conversation" as the Conversation Agent
+4. Test with your wake word or voice interface
 
-## Supported Models
+### Using Tool Calling
 
-### Conversation Models
-- `gemini-2.5-flash` (Recommended) - Fast, efficient model for conversations
-- `gemini-2.5-pro` - Advanced model for complex reasoning
-- `gemini-1.5-flash` - Previous generation fast model
-- `gemini-1.5-pro` - Previous generation advanced model
+Claude can control your Home Assistant devices:
 
-### Text-to-Speech Models
-- `gemini-2.5-flash-preview-tts` (Recommended) - Natural-sounding speech synthesis
-
-### Speech-to-Text Models
-- `gemini-2.5-flash` (Recommended) - Accurate speech recognition
-- Other Gemini models with audio capabilities
-
-### Model Parameters
-
-You can customize model behavior:
-- **Temperature** (0.0-2.0): Controls randomness. Higher = more creative, Lower = more deterministic
-  - Default: 1.0
-- **Top P** (0.0-1.0): Nucleus sampling threshold. Controls diversity
-  - Default: 0.95
-- **Top K** (1-100): Limits token selection to top K choices
-  - Default: 64
-- **Max Tokens**: Maximum response length
-  - Default: 3000
+```yaml
+# Example automation that allows Claude to control lights
+automation:
+  - alias: "Claude controls bedroom lights"
+    trigger:
+      - platform: conversation
+        command: "turn on bedroom lights to 50% brightness"
+    action:
+      - service: conversation.process
+        data:
+          agent_id: conversation.claude_vertex_ai_conversation
+          text: "{{ trigger.text }}"
+```
 
 ## Troubleshooting
 
@@ -234,25 +280,14 @@ You can customize model behavior:
 - Check GCP quotas and limits haven't been exceeded
 - Review [Vertex AI status page](https://status.cloud.google.com/)
 
-#### Invalid Location
-**Error**: "Location not available" or connection timeouts
+#### Model Not Available
+**Error**: "Model not found" or "Model not available in region"
 
 **Solutions**:
-- Use a supported Vertex AI region (see Configuration Fields above)
-- Check [available regions](https://cloud.google.com/vertex-ai/docs/general/locations)
-- Try default location: `us-central1`
-
-#### Models Not Listed
-**Problem**: No models appear when configuring
-
-**Solutions**:
-- Wait a few moments for the integration to load
-- Ensure Vertex AI API is enabled
-- Verify service account permissions
-- Check Home Assistant logs for errors:
-  ```
-  Settings > System > Logs
-  ```
+- Check if Claude models are available in your selected region
+- Try using `us-east5` region which has broad Claude model support
+- Visit [Vertex AI Model Garden](https://console.cloud.google.com/vertex-ai/model-garden) to verify model availability
+- Ensure you have access to Anthropic models through your GCP account
 
 #### Rate Limits or Quota Exceeded
 **Error**: "Quota exceeded" or "Rate limit"
@@ -273,6 +308,7 @@ logger:
   logs:
     custom_components.claude_vertex_ai_conversation: debug
     google.auth: debug
+    anthropic: debug
 ```
 
 Restart Home Assistant and check logs under Settings > System > Logs.
@@ -294,24 +330,41 @@ This integration uses Google Cloud Platform services which may incur costs:
 
 - **Vertex AI API**: Charged per request and token usage
 - **Pricing varies by**:
-  - Model type (Flash vs Pro)
+  - Model type (Haiku, Sonnet, Opus)
   - Input/output tokens
   - Region/location
+  - Whether extended thinking is enabled
 - **Cost optimization tips**:
-  - Use Flash models for routine tasks (more cost-effective)
+  - Use Haiku models for routine tasks (most cost-effective)
+  - Use Sonnet for balanced performance and cost
+  - Reserve Opus for complex reasoning tasks
   - Set reasonable max token limits
+  - Disable extended thinking unless needed
   - Monitor usage in GCP Console
   - Set up billing alerts
 
-Check current pricing: [Vertex AI Pricing](https://cloud.google.com/vertex-ai/pricing)
+Check current pricing:
+- [Vertex AI Pricing](https://cloud.google.com/vertex-ai/pricing)
+- [Anthropic Pricing on Vertex AI](https://cloud.google.com/vertex-ai/generative-ai/pricing)
 
 ## Privacy and Security
 
-- **Data Processing**: Your conversations are processed by Google Cloud Platform
+- **Data Processing**: Your conversations are processed by Google Cloud Platform using Anthropic's Claude models
 - **Data Location**: Processed in your selected GCP region
 - **Service Account Security**: Keep your JSON key file secure and never commit to version control
 - **Google's Terms**: Subject to [Google Cloud Terms of Service](https://cloud.google.com/terms)
+- **Anthropic's Terms**: Subject to [Anthropic's Terms](https://www.anthropic.com/legal/consumer-terms)
 - **Recommendation**: Use environment variables or Home Assistant secrets for storing credentials
+
+## Differences from Official Anthropic Integration
+
+This integration differs from the official Home Assistant Anthropic component:
+
+- **API Endpoint**: Uses Google Cloud Vertex AI instead of Anthropic's direct API
+- **Authentication**: Requires GCP service account instead of Anthropic API key
+- **Billing**: Costs are billed through your Google Cloud account
+- **Regional Deployment**: Models run in specific GCP regions
+- **Feature Set**: Based on the same core functionality as the official component
 
 ## Contributing
 
@@ -328,29 +381,35 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
 This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
 
-## Acknowledgments
+## Credits and Acknowledgments
 
-- Built for [Home Assistant](https://www.home-assistant.io/)
-- Powered by [Google Cloud Vertex AI](https://cloud.google.com/vertex-ai)
-- Uses [Google Generative AI SDK](https://github.com/googleapis/python-genai)
+- **Based on**: [Home Assistant Anthropic Integration](https://www.home-assistant.io/integrations/anthropic/)
+- **Original Authors**: Home Assistant Core Team
+- **Claude Models**: Developed by [Anthropic](https://www.anthropic.com/)
+- **Infrastructure**: Powered by [Google Cloud Vertex AI](https://cloud.google.com/vertex-ai)
+- **Built for**: [Home Assistant](https://www.home-assistant.io/)
+
+Special thanks to the Home Assistant community and the developers of the official Anthropic integration.
 
 ## Support
 
 - **Issues**: [GitHub Issues](https://github.com/myakove/homeassistant-claude-vertex-ai/issues)
-- **Documentation**: [Vertex AI Documentation](https://cloud.google.com/vertex-ai/docs)
+- **Vertex AI Documentation**: [Vertex AI Docs](https://cloud.google.com/vertex-ai/docs)
+- **Anthropic Documentation**: [Anthropic Docs](https://docs.anthropic.com/)
 - **Home Assistant Community**: [Community Forum](https://community.home-assistant.io/)
+- **Official Anthropic Integration**: [HA Anthropic Docs](https://www.home-assistant.io/integrations/anthropic/)
 
 ## Changelog
 
 ### Version 1.0.0
-- Initial release
-- Conversation agent support
-- Text-to-Speech (TTS) support
-- Speech-to-Text (STT) support
+- Initial release based on Home Assistant Anthropic integration
+- Conversation agent support with Claude models via Vertex AI
 - AI Tasks support
-- Multi-model support (Gemini 2.5 Flash, Pro, etc.)
+- Tool calling capabilities
+- Extended thinking support
+- Web search support (when available)
+- Multi-model support (Claude 3.5 Sonnet, Haiku, Opus, etc.)
 - Configurable model parameters
-- Safety settings configuration
 - HACS integration
 
 ---

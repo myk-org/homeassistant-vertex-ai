@@ -1,282 +1,268 @@
-"""The Vertex AI Conversation integration."""
+"""The Anthropic integration."""
 
 from __future__ import annotations
 
 import json
-import logging
 import os
 import tempfile
-from typing import Any
 
-from anthropic import AnthropicVertex
-from google.auth.exceptions import GoogleAuthError
-from google.oauth2 import service_account
-from google.oauth2.credentials import Credentials
+from anthropic import AnthropicVertex, AsyncAnthropicVertex
 
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import ConfigEntry, ConfigSubentry
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers import (
+    config_validation as cv,
+    device_registry as dr,
+    entity_registry as er,
+)
+from homeassistant.helpers.typing import ConfigType
 
 from .const import (
     CONF_LOCATION,
     CONF_PROJECT_ID,
     CONF_SERVICE_ACCOUNT_JSON,
+    DEFAULT_CONVERSATION_NAME,
     DOMAIN,
-    PLATFORMS,
-    VERTEX_AI_SCOPES,
+    LOGGER,
 )
 
-_LOGGER = logging.getLogger(__name__)
+PLATFORMS = (Platform.AI_TASK, Platform.CONVERSATION)
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
-type VertexAIConfigEntry = ConfigEntry[dict[str, Any]]
+type AnthropicConfigEntry = ConfigEntry[AsyncAnthropicVertex]
 
 
-async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
-    """Set up the Vertex AI Conversation component.
-
-    This integration is configured via config flow only.
-    YAML configuration is not supported.
-    """
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Set up Anthropic."""
+    await async_migrate_integration(hass)
     return True
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: VertexAIConfigEntry) -> bool:
-    """Set up Vertex AI Conversation from a config entry.
-
-    Args:
-        hass: Home Assistant instance
-        entry: Config entry containing credentials and settings
-
-    Returns:
-        True if setup was successful
-
-    Raises:
-        ConfigEntryAuthFailed: If authentication fails
-        ConfigEntryNotReady: If the service is temporarily unavailable
-    """
+async def async_setup_entry(hass: HomeAssistant, entry: AnthropicConfigEntry) -> bool:
+    """Set up Anthropic from a config entry."""
     project_id = entry.data[CONF_PROJECT_ID]
     location = entry.data[CONF_LOCATION]
-    service_account_json_str = entry.data[CONF_SERVICE_ACCOUNT_JSON]
+    service_account_json = entry.data[CONF_SERVICE_ACCOUNT_JSON]
 
-    _LOGGER.debug(
-        "Setting up Vertex AI Conversation for project %s in location %s",
-        project_id,
-        location,
-    )
+    # Write credentials to temp file and set environment variable
+    def setup_credentials() -> str:
+        credentials_dict = json.loads(service_account_json)
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False
+        ) as temp_file:
+            json.dump(credentials_dict, temp_file)
+            temp_file_path = temp_file.name
 
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_file_path
+        return temp_file_path
+
+    await hass.async_add_executor_job(setup_credentials)
+
+    # Create async client for runtime use
+    async_client = AsyncAnthropicVertex(project_id=project_id, region=location)
+
+    # Validate connectivity using sync client
     try:
-        # Parse credentials JSON
-        credentials_info = json.loads(service_account_json_str)
-
-        # Determine credential type and create appropriate credentials object
-        credential_type = credentials_info.get("type")
-
-        if credential_type == "service_account":
-            # Create credentials from service account
-            credentials = service_account.Credentials.from_service_account_info(
-                credentials_info,
-                scopes=VERTEX_AI_SCOPES,
-            )
-            _LOGGER.debug("Service account credentials created successfully")
-
-        elif credential_type == "authorized_user":
-            # Use the built-in method for authorized_user credentials
-            # This properly handles all fields from the ADC authorized_user JSON format
-            # IMPORTANT: Remove quota_project_id from the dict to avoid conflicts
-            credentials_info_clean = {
-                k: v for k, v in credentials_info.items() if k != "quota_project_id"
-            }
-            credentials = Credentials.from_authorized_user_info(
-                credentials_info_clean,
-                scopes=VERTEX_AI_SCOPES,
-            )
-            # The project will be specified in genai.Client, not on credentials
-            _LOGGER.debug("Authorized user credentials created successfully")
-
-            # project_id comes from config entry (user input), NOT from the credentials JSON
-
-        else:
-            _LOGGER.error(
-                "Invalid credential type: %s. Must be 'service_account' "
-                "or 'authorized_user'",
-                credential_type,
-            )
-            raise ConfigEntryAuthFailed(
-                f"Invalid credential type: {credential_type}. "
-                "Must be 'service_account' or 'authorized_user'"
+        def validate_connection() -> None:
+            sync_client = AnthropicVertex(project_id=project_id, region=location)
+            sync_client.messages.create(
+                model="claude-haiku-4-5",
+                max_tokens=10,
+                messages=[{"role": "user", "content": "test"}],
             )
 
-    except json.JSONDecodeError as err:
-        _LOGGER.error("Invalid credentials JSON: %s", err)
-        raise ConfigEntryAuthFailed("Credentials JSON is invalid or malformed") from err
-    except (KeyError, ValueError) as err:
-        _LOGGER.error("Invalid credentials: %s", err)
-        raise ConfigEntryAuthFailed("Credentials are missing required fields") from err
-    except GoogleAuthError as err:
-        _LOGGER.error("Google authentication error: %s", err)
-        raise ConfigEntryAuthFailed(
-            f"Failed to authenticate with Google: {err}"
-        ) from err
-
-    # Write credentials to a persistent temporary file for AnthropicVertex
-    # We need this file to persist for the lifetime of the integration
-    credentials_file = None
-    try:
-        # Create a temporary file for credentials
-        credentials_file = tempfile.NamedTemporaryFile(
-            mode="w",
-            suffix=".json",
-            delete=False,
-            dir=hass.config.config_dir,
-        )
-        json.dump(credentials_info, credentials_file)
-        credentials_file.close()
-        credentials_path = credentials_file.name
-
-        _LOGGER.debug("Credentials written to temporary file: %s", credentials_path)
-
-        # Set environment variable for credentials
-        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = credentials_path
-
-        # Create Anthropic Vertex AI client
-        client = AnthropicVertex(
-            project_id=project_id,
-            region=location,
-        )
-
-        _LOGGER.debug("AnthropicVertex client created successfully")
-
-        # Validate connection with a simple API call
-        def _validate_connection() -> None:
-            """Validate connection to Vertex AI (runs in executor)."""
-            try:
-                # Test the connection with a simple API call
-                client.messages.create(
-                    model="claude-sonnet-4-5@20250929",
-                    max_tokens=10,
-                    messages=[{"role": "user", "content": "test"}],
-                )
-                _LOGGER.debug("Successfully validated connection to Vertex AI Claude")
-            except Exception as err:
-                _LOGGER.error("Failed to validate Vertex AI connection: %s", err)
-                raise
-
-        # Run validation in executor since it's a blocking operation
-        await hass.async_add_executor_job(_validate_connection)
-
-    except GoogleAuthError as err:
-        _LOGGER.error("Authentication failed during connection validation: %s", err)
-        # Clean up credentials file on error
-        if credentials_file and os.path.exists(credentials_file.name):
-            try:
-                os.unlink(credentials_file.name)
-            except Exception:
-                pass
-        raise ConfigEntryAuthFailed(f"Authentication failed: {err}") from err
+        await hass.async_add_executor_job(validate_connection)
     except Exception as err:
-        _LOGGER.error("Failed to connect to Vertex AI: %s", err)
-        # Clean up credentials file on error
-        if credentials_file and os.path.exists(credentials_file.name):
-            try:
-                os.unlink(credentials_file.name)
-            except Exception:
-                pass
-        raise ConfigEntryNotReady(
-            f"Unable to connect to Vertex AI service: {err}"
-        ) from err
+        LOGGER.error("Failed to connect to Vertex AI: %s", err)
+        raise ConfigEntryNotReady(err) from err
 
-    # Store client and configuration in hass.data
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = {
-        "client": client,
-        "project_id": project_id,
-        "location": location,
-        "credentials": credentials,
-        "credentials_path": credentials_path,
-    }
+    entry.runtime_data = async_client
 
-    _LOGGER.info(
-        "Vertex AI Conversation setup complete for project %s",
-        project_id,
-    )
-
-    # Forward entry setup to platforms
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    entry.async_on_unload(entry.add_update_listener(async_update_options))
 
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: VertexAIConfigEntry) -> bool:
-    """Unload a config entry.
-
-    Args:
-        hass: Home Assistant instance
-        entry: Config entry to unload
-
-    Returns:
-        True if unload was successful
-    """
-    _LOGGER.debug("Unloading Vertex AI Conversation entry %s", entry.entry_id)
-
-    # Unload platforms
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-
-    if unload_ok:
-        # Clean up credentials file if it exists
-        entry_data = hass.data[DOMAIN].get(entry.entry_id, {})
-        credentials_path = entry_data.get("credentials_path")
-        if credentials_path and os.path.exists(credentials_path):
-            try:
-                os.unlink(credentials_path)
-                _LOGGER.debug("Cleaned up credentials file: %s", credentials_path)
-            except Exception as err:
-                _LOGGER.warning("Failed to clean up credentials file: %s", err)
-
-        # Remove stored data
-        hass.data[DOMAIN].pop(entry.entry_id, None)
-
-        # Clean up domain data if no more entries
-        if not hass.data[DOMAIN]:
-            hass.data.pop(DOMAIN, None)
-
-        _LOGGER.info("Successfully unloaded Vertex AI Conversation entry")
-    else:
-        _LOGGER.warning("Failed to unload some platforms")
-
-    return unload_ok
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload Anthropic."""
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 
-async def async_migrate_entry(hass: HomeAssistant, entry: VertexAIConfigEntry) -> bool:
-    """Migrate old config entry to new version.
+async def async_update_options(
+    hass: HomeAssistant, entry: AnthropicConfigEntry
+) -> None:
+    """Update options."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
-    Args:
-        hass: Home Assistant instance
-        entry: Config entry to migrate
 
-    Returns:
-        True if migration was successful
-    """
-    _LOGGER.debug(
-        "Migrating Vertex AI Conversation entry from version %s.%s",
-        entry.version,
-        entry.minor_version,
+async def async_migrate_integration(hass: HomeAssistant) -> None:
+    """Migrate integration entry structure."""
+
+    # Make sure we get enabled config entries first
+    entries = sorted(
+        hass.config_entries.async_entries(DOMAIN),
+        key=lambda e: e.disabled_by is not None,
     )
+    if not any(entry.version == 1 for entry in entries):
+        return
 
-    # Currently at version 1.1, no migrations needed yet
-    # Future migrations will be implemented here as the schema evolves
+    api_keys_entries: dict[str, tuple[ConfigEntry, bool]] = {}
+    entity_registry = er.async_get(hass)
+    device_registry = dr.async_get(hass)
 
-    if entry.version == 1:
-        # Placeholder for future version 1 -> 2 migration
-        # if entry.minor_version < 2:
-        #     # Migration logic here
-        #     entry.minor_version = 2
-        #     hass.config_entries.async_update_entry(entry)
-        pass
+    for entry in entries:
+        use_existing = False
+        subentry = ConfigSubentry(
+            data=entry.options,
+            subentry_type="conversation",
+            title=entry.title,
+            unique_id=None,
+        )
+        if entry.data[CONF_PROJECT_ID] not in api_keys_entries:
+            use_existing = True
+            all_disabled = all(
+                e.disabled_by is not None
+                for e in entries
+                if e.data[CONF_PROJECT_ID] == entry.data[CONF_PROJECT_ID]
+            )
+            api_keys_entries[entry.data[CONF_PROJECT_ID]] = (entry, all_disabled)
 
-    _LOGGER.debug(
-        "Migration complete, entry now at version %s.%s",
-        entry.version,
-        entry.minor_version,
+        parent_entry, all_disabled = api_keys_entries[entry.data[CONF_PROJECT_ID]]
+
+        hass.config_entries.async_add_subentry(parent_entry, subentry)
+        conversation_entity_id = entity_registry.async_get_entity_id(
+            "conversation",
+            DOMAIN,
+            entry.entry_id,
+        )
+        device = device_registry.async_get_device(
+            identifiers={(DOMAIN, entry.entry_id)}
+        )
+
+        if conversation_entity_id is not None:
+            conversation_entity_entry = entity_registry.entities[conversation_entity_id]
+            entity_disabled_by = conversation_entity_entry.disabled_by
+            if (
+                entity_disabled_by is er.RegistryEntryDisabler.CONFIG_ENTRY
+                and not all_disabled
+            ):
+                # Device and entity registries will set the disabled_by flag to None
+                # when moving a device or entity disabled by CONFIG_ENTRY to an enabled
+                # config entry, but we want to set it to DEVICE or USER instead,
+                entity_disabled_by = (
+                    er.RegistryEntryDisabler.DEVICE
+                    if device
+                    else er.RegistryEntryDisabler.USER
+                )
+            entity_registry.async_update_entity(
+                conversation_entity_id,
+                config_entry_id=parent_entry.entry_id,
+                config_subentry_id=subentry.subentry_id,
+                disabled_by=entity_disabled_by,
+                new_unique_id=subentry.subentry_id,
+            )
+
+        if device is not None:
+            # Device and entity registries will set the disabled_by flag to None
+            # when moving a device or entity disabled by CONFIG_ENTRY to an enabled
+            # config entry, but we want to set it to USER instead,
+            device_disabled_by = device.disabled_by
+            if (
+                device.disabled_by is dr.DeviceEntryDisabler.CONFIG_ENTRY
+                and not all_disabled
+            ):
+                device_disabled_by = dr.DeviceEntryDisabler.USER
+            device_registry.async_update_device(
+                device.id,
+                disabled_by=device_disabled_by,
+                new_identifiers={(DOMAIN, subentry.subentry_id)},
+                add_config_subentry_id=subentry.subentry_id,
+                add_config_entry_id=parent_entry.entry_id,
+            )
+            if parent_entry.entry_id != entry.entry_id:
+                device_registry.async_update_device(
+                    device.id,
+                    remove_config_entry_id=entry.entry_id,
+                )
+            else:
+                device_registry.async_update_device(
+                    device.id,
+                    remove_config_entry_id=entry.entry_id,
+                    remove_config_subentry_id=None,
+                )
+
+        if not use_existing:
+            await hass.config_entries.async_remove(entry.entry_id)
+        else:
+            hass.config_entries.async_update_entry(
+                entry,
+                title=DEFAULT_CONVERSATION_NAME,
+                options={},
+                version=2,
+                minor_version=3,
+            )
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: AnthropicConfigEntry) -> bool:
+    """Migrate entry."""
+    LOGGER.debug("Migrating from version %s:%s", entry.version, entry.minor_version)
+
+    if entry.version > 2:
+        # This means the user has downgraded from a future version
+        return False
+
+    if entry.version == 2 and entry.minor_version == 1:
+        # Correct broken device migration in Home Assistant Core 2025.7.0b0-2025.7.0b1
+        device_registry = dr.async_get(hass)
+        for device in dr.async_entries_for_config_entry(
+            device_registry, entry.entry_id
+        ):
+            device_registry.async_update_device(
+                device.id,
+                remove_config_entry_id=entry.entry_id,
+                remove_config_subentry_id=None,
+            )
+
+        hass.config_entries.async_update_entry(entry, minor_version=2)
+
+    if entry.version == 2 and entry.minor_version == 2:
+        # Fix migration where the disabled_by flag was not set correctly.
+        # We can currently only correct this for enabled config entries,
+        # because migration does not run for disabled config entries. This
+        # is asserted in tests, and if that behavior is changed, we should
+        # correct also disabled config entries.
+        device_registry = dr.async_get(hass)
+        entity_registry = er.async_get(hass)
+        devices = dr.async_entries_for_config_entry(device_registry, entry.entry_id)
+        entity_entries = er.async_entries_for_config_entry(
+            entity_registry, entry.entry_id
+        )
+        if entry.disabled_by is None:
+            # If the config entry is not disabled, we need to set the disabled_by
+            # flag on devices to USER, and on entities to DEVICE, if they are set
+            # to CONFIG_ENTRY.
+            for device in devices:
+                if device.disabled_by is not dr.DeviceEntryDisabler.CONFIG_ENTRY:
+                    continue
+                device_registry.async_update_device(
+                    device.id,
+                    disabled_by=dr.DeviceEntryDisabler.USER,
+                )
+            for entity in entity_entries:
+                if entity.disabled_by is not er.RegistryEntryDisabler.CONFIG_ENTRY:
+                    continue
+                entity_registry.async_update_entity(
+                    entity.entity_id,
+                    disabled_by=er.RegistryEntryDisabler.DEVICE,
+                )
+        hass.config_entries.async_update_entry(entry, minor_version=3)
+
+    LOGGER.debug(
+        "Migration to version %s:%s successful", entry.version, entry.minor_version
     )
 
     return True
