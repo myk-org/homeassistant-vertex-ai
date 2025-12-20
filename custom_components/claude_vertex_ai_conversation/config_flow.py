@@ -20,18 +20,35 @@ from homeassistant.config_entries import (
     OptionsFlow,
 )
 from homeassistant.core import callback
+from homeassistant.const import CONF_LLM_HASS_API
+from homeassistant.helpers import llm
 from homeassistant.helpers.selector import (
+    NumberSelector,
+    NumberSelectorConfig,
+    NumberSelectorMode,
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
+    TemplateSelector,
     TextSelector,
     TextSelectorConfig,
     TextSelectorType,
 )
 
 from .const import (
+    AVAILABLE_MODELS,
     CONF_LOCATION,
+    CONF_MAX_TOKENS,
+    CONF_MODEL,
     CONF_PROJECT_ID,
     CONF_SERVICE_ACCOUNT_JSON,
+    CONF_SYSTEM_PROMPT,
+    CONF_TEMPERATURE,
     DEFAULT_LOCATION,
     DOMAIN,
+    RECOMMENDED_CHAT_MODEL,
+    RECOMMENDED_MAX_TOKENS,
+    RECOMMENDED_TEMPERATURE,
     VERTEX_AI_SCOPES,
 )
 
@@ -299,7 +316,7 @@ class VertexAIConfigFlow(ConfigFlow, domain=DOMAIN):
                     # Test the connection with a simple API call
                     await self.hass.async_add_executor_job(
                         lambda: client.messages.create(
-                            model="claude-sonnet-4-5@20250929",
+                            model=RECOMMENDED_CHAT_MODEL,
                             max_tokens=10,
                             messages=[{"role": "user", "content": "test"}],
                         )
@@ -334,10 +351,6 @@ class VertexAIConfigFlow(ConfigFlow, domain=DOMAIN):
 class VertexAIOptionsFlowHandler(OptionsFlow):
     """Handle options flow for Vertex AI Conversation."""
 
-    def __init__(self, config_entry: ConfigEntry) -> None:
-        """Initialize options flow."""
-        self.config_entry = config_entry
-
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -345,9 +358,61 @@ class VertexAIOptionsFlowHandler(OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
-        # For now, we'll just provide a placeholder options flow
-        # This can be expanded later to configure default models, etc.
-        data_schema = vol.Schema({})
+        # Get current values from options, falling back to defaults
+        options = self.config_entry.options
+
+        # Build schema with current values
+        data_schema = vol.Schema(
+            {
+                vol.Optional(
+                    CONF_MODEL,
+                    default=options.get(CONF_MODEL, RECOMMENDED_CHAT_MODEL),
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=AVAILABLE_MODELS,
+                        mode=SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+                vol.Optional(
+                    CONF_SYSTEM_PROMPT,
+                    description={"suggested_value": options.get(CONF_SYSTEM_PROMPT)},
+                ): TemplateSelector(),
+                vol.Optional(
+                    CONF_MAX_TOKENS,
+                    default=options.get(CONF_MAX_TOKENS, RECOMMENDED_MAX_TOKENS),
+                ): NumberSelector(
+                    NumberSelectorConfig(
+                        min=1,
+                        max=8192,
+                        step=1,
+                        mode=NumberSelectorMode.BOX,
+                    )
+                ),
+                vol.Optional(
+                    CONF_TEMPERATURE,
+                    default=options.get(CONF_TEMPERATURE, RECOMMENDED_TEMPERATURE),
+                ): NumberSelector(
+                    NumberSelectorConfig(
+                        min=0.0,
+                        max=1.0,
+                        step=0.1,
+                        mode=NumberSelectorMode.SLIDER,
+                    )
+                ),
+                vol.Optional(
+                    CONF_LLM_HASS_API,
+                    default=options.get(CONF_LLM_HASS_API, llm.LLM_API_ASSIST),
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=[
+                            llm.LLM_API_ASSIST,
+                            llm.LLM_API_NONE,
+                        ],
+                        mode=SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+            }
+        )
 
         return self.async_show_form(
             step_id="init",

@@ -16,9 +16,19 @@ from homeassistant.components.conversation import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_LLM_HASS_API, MATCH_ALL
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import intent
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, RECOMMENDED_CHAT_MODEL, RECOMMENDED_MAX_TOKENS
+from .const import (
+    CONF_MAX_TOKENS,
+    CONF_MODEL,
+    CONF_SYSTEM_PROMPT,
+    CONF_TEMPERATURE,
+    DOMAIN,
+    RECOMMENDED_CHAT_MODEL,
+    RECOMMENDED_MAX_TOKENS,
+    RECOMMENDED_TEMPERATURE,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -175,10 +185,10 @@ class VertexAIConversationEntity(
         """
         # Get configuration from options
         options = self._config_entry.options
-        system_prompt = options.get("system_prompt")
-        model_name = options.get("model", RECOMMENDED_CHAT_MODEL)
-        max_tokens = options.get("max_tokens", RECOMMENDED_MAX_TOKENS)
-        temperature = options.get("temperature", 1.0)
+        system_prompt = options.get(CONF_SYSTEM_PROMPT)
+        model_name = options.get(CONF_MODEL, RECOMMENDED_CHAT_MODEL)
+        max_tokens = options.get(CONF_MAX_TOKENS, RECOMMENDED_MAX_TOKENS)
+        temperature = options.get(CONF_TEMPERATURE, RECOMMENDED_TEMPERATURE)
 
         _LOGGER.debug(
             "Generating content with model %s (system prompt: %s)",
@@ -218,16 +228,10 @@ class VertexAIConversationEntity(
             chat_log.append({"role": "assistant", "content": response_text})
 
             # Create and return ConversationResult
+            intent_response = intent.IntentResponse(language=conversation_input.language or "en")
+            intent_response.async_set_speech(response_text)
             return ConversationResult(
-                response=conversation.ConversationResponse(
-                    speech={
-                        "plain": {
-                            "speech": response_text,
-                            "extra_data": None,
-                        }
-                    },
-                    language=conversation_input.language if hasattr(conversation_input, "language") else None,
-                ),
+                response=intent_response,
                 conversation_id=chat_log,
             )
 
@@ -240,16 +244,10 @@ class VertexAIConversationEntity(
                 "Please try again."
             )
 
+            intent_response = intent.IntentResponse(language=conversation_input.language or "en")
+            intent_response.async_set_speech(error_message)
             return ConversationResult(
-                response=conversation.ConversationResponse(
-                    speech={
-                        "plain": {
-                            "speech": error_message,
-                            "extra_data": None,
-                        }
-                    },
-                    language=conversation_input.language if hasattr(conversation_input, "language") else None,
-                ),
+                response=intent_response,
                 conversation_id=chat_log,
             )
 
