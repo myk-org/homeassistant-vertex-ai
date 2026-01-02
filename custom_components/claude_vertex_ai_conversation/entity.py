@@ -74,6 +74,7 @@ from homeassistant.util import slugify
 from . import AnthropicConfigEntry
 from .const import (
     CONF_CHAT_MODEL,
+    CONF_CUSTOM_TOOLS,
     CONF_MAX_TOKENS,
     CONF_TEMPERATURE,
     CONF_THINKING_BUDGET,
@@ -90,6 +91,7 @@ from .const import (
     MIN_THINKING_BUDGET,
     NON_THINKING_MODELS,
 )
+from .custom_tools import CustomTool, parse_custom_tools
 
 # Max number of back and forth with the LLM to generate a response
 MAX_TOOL_ITERATIONS = 10
@@ -586,6 +588,7 @@ class AnthropicBaseLLMEntity(Entity):
             model=subentry.data.get(CONF_CHAT_MODEL, DEFAULT[CONF_CHAT_MODEL]),
             entry_type=dr.DeviceEntryType.SERVICE,
         )
+        self._custom_tools: dict[str, CustomTool] = {}
 
     async def _async_handle_chat_log(
         self,
@@ -633,6 +636,20 @@ class AnthropicBaseLLMEntity(Entity):
                 _format_tool(tool, chat_log.llm_api.custom_serializer)
                 for tool in chat_log.llm_api.tools
             ]
+
+        # Parse and add custom tools
+        custom_tools_yaml = self.subentry.data.get(CONF_CUSTOM_TOOLS, "")
+        custom_tools_list: list[CustomTool] = []
+        if custom_tools_yaml:
+            custom_tools_list = parse_custom_tools(self.hass, custom_tools_yaml)
+            for custom_tool in custom_tools_list:
+                tools.append(_format_tool(
+                    custom_tool,
+                    chat_log.llm_api.custom_serializer if chat_log.llm_api else None
+                ))
+
+        # Store custom tools for execution lookup
+        self._custom_tools = {tool.name: tool for tool in custom_tools_list}
 
         if options.get(CONF_WEB_SEARCH):
             web_search = WebSearchTool20250305Param(
@@ -748,8 +765,58 @@ class AnthropicBaseLLMEntity(Entity):
                     f"Sorry, I had a problem talking to Anthropic: {err}"
                 ) from err
 
+            # Execute custom tools
+            await self._execute_custom_tools(chat_log)
+
             if not chat_log.unresponded_tool_results:
                 break
+
+    async def _execute_custom_tools(self, chat_log: conversation.ChatLog) -> None:
+        """Execute any pending custom tool calls."""
+        if not self._custom_tools:
+            return
+
+        # Find pending tool calls that are custom tools
+        for content in chat_log.content:
+            if isinstance(content, conversation.AssistantContent) and content.tool_calls:
+                for tool_call in content.tool_calls:
+                    if tool_call.tool_name in self._custom_tools:
+                        # Check if this tool call has already been responded to
+                        tool_responded = False
+                        for response_content in chat_log.content:
+                            if (
+                                isinstance(response_content, conversation.ToolResultContent)
+                                and response_content.tool_call_id == tool_call.id
+                            ):
+                                tool_responded = True
+                                break
+
+                        if not tool_responded:
+                            custom_tool = self._custom_tools[tool_call.tool_name]
+                            tool_input = llm.ToolInput(
+                                tool_name=tool_call.tool_name,
+                                tool_args=tool_call.tool_args,
+                            )
+                            try:
+                                result = await custom_tool.async_call(
+                                    self.hass,
+                                    tool_input,
+                                    chat_log.llm_context if hasattr(chat_log, 'llm_context') else None,
+                                )
+                            except Exception as err:
+                                LOGGER.error(
+                                    "Error executing custom tool %s with args %s: %s",
+                                    tool_call.tool_name,
+                                    tool_call.tool_args,
+                                    err,
+                                    exc_info=True,
+                                )
+                                result = {"error": str(err)}
+
+                            chat_log.async_add_tool_result(
+                                tool_call,
+                                result,
+                            )
 
 
 async def async_prepare_files_for_prompt(

@@ -38,11 +38,15 @@ from homeassistant.helpers.selector import (
     SelectSelector,
     SelectSelectorConfig,
     TemplateSelector,
+    TextSelector,
+    TextSelectorConfig,
+    TextSelectorType,
 )
 from homeassistant.helpers.typing import VolDictType
 
 from .const import (
     CONF_CHAT_MODEL,
+    CONF_CUSTOM_TOOLS,
     CONF_LOCATION,
     CONF_MAX_TOKENS,
     CONF_PROJECT_ID,
@@ -239,6 +243,9 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
                         CONF_LLM_HASS_API,
                     ): SelectSelector(
                         SelectSelectorConfig(options=hass_apis, multiple=True)
+                    ),
+                    vol.Optional(CONF_CUSTOM_TOOLS, default=""): TextSelector(
+                        TextSelectorConfig(type=TextSelectorType.TEXT, multiline=True)
                     ),
                 }
             )

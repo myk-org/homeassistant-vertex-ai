@@ -86,10 +86,12 @@
             "llm_hass_api": "[%key:common::config_flow::data::llm_hass_api%]",
             "name": "[%key:common::config_flow::data::name%]",
             "prompt": "[%key:common::config_flow::data::prompt%]",
-            "recommended": "Recommended model settings"
+            "recommended": "Recommended model settings",
+            "custom_tools": "Custom Tools (YAML)"
           },
           "data_description": {
-            "prompt": "Instruct how the LLM should respond. This can be a template."
+            "prompt": "Instruct how the LLM should respond. This can be a template.",
+            "custom_tools": "Define custom tools in YAML format. Each tool maps a Claude function call to Home Assistant service calls."
           },
           "title": "Basic settings"
         },

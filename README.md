@@ -399,19 +399,6 @@ Special thanks to the Home Assistant community and the developers of the officia
 - **Home Assistant Community**: [Community Forum](https://community.home-assistant.io/)
 - **Official Anthropic Integration**: [HA Anthropic Docs](https://www.home-assistant.io/integrations/anthropic/)
 
-## Changelog
-
-### Version 1.0.0
-- Initial release based on Home Assistant Anthropic integration
-- Conversation agent support with Claude models via Vertex AI
-- AI Tasks support
-- Tool calling capabilities
-- Extended thinking support
-- Web search support (when available)
-- Multi-model support (Claude 3.5 Sonnet, Haiku, Opus, etc.)
-- Configurable model parameters
-- HACS integration
-
 ---
 
 **Made with ❤️ for the Home Assistant community**
