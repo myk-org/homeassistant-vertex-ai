@@ -30,7 +30,39 @@ TOOL_SCHEMA = vol.Schema(
     }
 )
 
+# Accept either a list of tools OR a single tool dict
+# Single tool dict will be wrapped in a list by normalize_tools_config
 TOOLS_SCHEMA = vol.Schema([TOOL_SCHEMA])
+
+
+def normalize_tools_config(config: Any) -> list | None:
+    """Normalize tools config to always be a list (or None).
+
+    Args:
+        config: Can be None, empty dict, single tool dict, or list of tools
+
+    Returns:
+        None if no tools configured, otherwise list of tool dicts
+    """
+    if config is None:
+        return None
+
+    # Empty dict means no tools configured
+    if isinstance(config, dict) and not config:
+        return None
+
+    # Single tool dict - wrap in list
+    if isinstance(config, dict):
+        return [config]
+
+    # Already a list
+    if isinstance(config, list):
+        # Empty list means no tools
+        return None if not config else config
+
+    # Unexpected type
+    _LOGGER.error("Unexpected config type: %s", type(config))
+    return None
 
 
 class CustomTool(llm.Tool):
@@ -165,19 +197,41 @@ class CustomTool(llm.Tool):
 
 def parse_custom_tools(
     hass: HomeAssistant,
-    yaml_config: str,
+    config_input: str | list | dict | None,
 ) -> list[CustomTool]:
-    """Parse YAML configuration and return list of CustomTool objects."""
-    if not yaml_config or not yaml_config.strip():
+    """Parse YAML configuration or dict/list and return list of CustomTool objects.
+
+    Args:
+        hass: HomeAssistant instance
+        config_input: Can be:
+            - str: Legacy YAML string (will be parsed)
+            - list/dict: Already parsed config from ObjectSelector
+            - None: No tools configured
+    """
+    if not config_input:
         return []
 
     try:
-        tools_config = yaml.safe_load(yaml_config)
-        if not tools_config:
+        # Handle legacy string input (YAML)
+        if isinstance(config_input, str):
+            if not config_input.strip():
+                return []
+            tools_config = yaml.safe_load(config_input)
+        # Handle dict/list input from ObjectSelector
+        elif isinstance(config_input, (dict, list)):
+            tools_config = config_input
+        else:
+            _LOGGER.error("Invalid config_input type: %s", type(config_input))
+            return []
+
+        # Normalize config (handles empty dict, single tool, list of tools)
+        normalized_config = normalize_tools_config(tools_config)
+        if normalized_config is None:
+            _LOGGER.debug("No custom tools configured")
             return []
 
         # Validate against schema
-        validated = TOOLS_SCHEMA(tools_config)
+        validated = TOOLS_SCHEMA(normalized_config)
 
         custom_tools = []
         seen_names: set[str] = set()
