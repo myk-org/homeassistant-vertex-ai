@@ -2,18 +2,15 @@
 
 from __future__ import annotations
 
-from functools import partial
 import json
 import logging
 import os
-import re
 import tempfile
 from typing import Any, cast
 
 from anthropic import AnthropicVertex
 import voluptuous as vol
 from voluptuous_openapi import convert
-import yaml
 
 from homeassistant.components.zone import ENTITY_ID_HOME
 from homeassistant.config_entries import (
@@ -35,13 +32,12 @@ from homeassistant.helpers import llm
 from homeassistant.helpers.selector import (
     NumberSelector,
     NumberSelectorConfig,
+    ObjectSelector,
+    ObjectSelectorConfig,
     SelectOptionDict,
     SelectSelector,
     SelectSelectorConfig,
     TemplateSelector,
-    TextSelector,
-    TextSelectorConfig,
-    TextSelectorType,
 )
 from homeassistant.helpers.typing import VolDictType
 
@@ -71,7 +67,7 @@ from .const import (
     NON_THINKING_MODELS,
     WEB_SEARCH_UNSUPPORTED_MODELS,
 )
-from .custom_tools import TOOLS_SCHEMA
+from .custom_tools import TOOLS_SCHEMA, normalize_tools_config
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -246,9 +242,6 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
                     ): SelectSelector(
                         SelectSelectorConfig(options=hass_apis, multiple=True)
                     ),
-                    vol.Optional(CONF_CUSTOM_TOOLS, default=""): TextSelector(
-                        TextSelectorConfig(type=TextSelectorType.TEXT, multiline=True)
-                    ),
                 }
             )
 
@@ -261,23 +254,6 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
         if user_input is not None:
             if not user_input.get(CONF_LLM_HASS_API):
                 user_input.pop(CONF_LLM_HASS_API, None)
-
-            # Validate custom tools YAML if present
-            if self._subentry_type == "conversation" and CONF_CUSTOM_TOOLS in user_input:
-                custom_tools_yaml = user_input.get(CONF_CUSTOM_TOOLS, "").strip()
-                if custom_tools_yaml:
-                    try:
-                        # Parse YAML
-                        tools_config = yaml.safe_load(custom_tools_yaml)
-                        if tools_config:  # Only validate if not empty
-                            # Validate against schema
-                            TOOLS_SCHEMA(tools_config)
-                    except yaml.YAMLError as err:
-                        _LOGGER.warning("Invalid YAML in custom tools: %s", err)
-                        errors[CONF_CUSTOM_TOOLS] = "invalid_custom_tools_yaml"
-                    except vol.Invalid as err:
-                        _LOGGER.warning("Invalid custom tools schema: %s", err)
-                        errors[CONF_CUSTOM_TOOLS] = "invalid_custom_tools_schema"
 
             if user_input[CONF_RECOMMENDED]:
                 if not errors:
@@ -307,6 +283,7 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
                 vol.Schema(step_schema), self.options
             ),
             errors=errors or None,
+            last_step=False,
         )
 
     async def async_step_advanced(
@@ -346,6 +323,7 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
                 vol.Schema(step_schema), self.options
             ),
             errors=errors,
+            last_step=False,
         )
 
     async def async_step_model(
@@ -416,6 +394,11 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
             self.options.update(user_input)
 
             if not errors:
+                # For conversation type, move to custom tools step
+                if self._subentry_type == "conversation":
+                    return await self.async_step_custom_tools()
+
+                # For ai_task_data type, create entry directly
                 if self._is_new:
                     return self.async_create_entry(
                         title=self.options.pop(CONF_NAME),
@@ -434,6 +417,75 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
                 vol.Schema(step_schema), self.options
             ),
             errors=errors or None,
+            last_step=False if self._subentry_type == "conversation" else True,
+        )
+
+    async def async_step_custom_tools(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Configure custom tools via YAML."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            # Validate custom tools config if present
+            custom_tools_config = user_input.get(CONF_CUSTOM_TOOLS)
+            _LOGGER.debug(
+                "Received custom_tools_config: %s (type: %s)",
+                custom_tools_config,
+                type(custom_tools_config),
+            )
+
+            # Normalize the config (handles empty dict, single tool, list of tools)
+            normalized_config = normalize_tools_config(custom_tools_config)
+            _LOGGER.debug("Normalized config: %s", normalized_config)
+
+            if normalized_config is not None:
+                try:
+                    # Validate against schema
+                    validated = TOOLS_SCHEMA(normalized_config)
+                    _LOGGER.debug("Schema validation passed: %s", validated)
+                    # Store the validated config back
+                    user_input[CONF_CUSTOM_TOOLS] = validated
+                except vol.Invalid as err:
+                    _LOGGER.error("Invalid custom tools schema: %s", err)
+                    _LOGGER.error("Error path: %s", err.path)
+                    _LOGGER.error("Error message: %s", err.msg)
+                    errors[CONF_CUSTOM_TOOLS] = "invalid_custom_tools_schema"
+                except Exception as err:
+                    _LOGGER.error("Unexpected validation error: %s", err, exc_info=True)
+                    errors[CONF_CUSTOM_TOOLS] = "invalid_custom_tools_schema"
+            else:
+                # No tools configured, remove from config
+                _LOGGER.debug("No custom tools configured")
+                user_input.pop(CONF_CUSTOM_TOOLS, None)
+
+            if not errors:
+                self.options.update(user_input)
+                if self._is_new:
+                    return self.async_create_entry(
+                        title=self.options.pop(CONF_NAME),
+                        data=self.options,
+                    )
+
+                return self.async_update_and_abort(
+                    self._get_entry(),
+                    self._get_reconfigure_subentry(),
+                    data=self.options,
+                )
+
+        current_config = self.options.get(CONF_CUSTOM_TOOLS)
+
+        return self.async_show_form(
+            step_id="custom_tools",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_CUSTOM_TOOLS,
+                        default=current_config if current_config else None,
+                    ): ObjectSelector(ObjectSelectorConfig()),
+                }
+            ),
+            errors=errors,
             last_step=True,
         )
 

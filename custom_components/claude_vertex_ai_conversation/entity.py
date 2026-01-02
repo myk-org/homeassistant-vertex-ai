@@ -707,11 +707,11 @@ class AnthropicBaseLLMEntity(Entity):
             ]
 
         # Parse and add custom tools
-        custom_tools_yaml = options.get(CONF_CUSTOM_TOOLS, "")
+        custom_tools_config = options.get(CONF_CUSTOM_TOOLS)
         custom_tools_list: list[CustomTool] = []
-        if custom_tools_yaml:
-            LOGGER.debug("Parsing custom tools from YAML config")
-            custom_tools_list = parse_custom_tools(self.hass, custom_tools_yaml)
+        if custom_tools_config:
+            LOGGER.debug("Parsing custom tools from config (type: %s)", type(custom_tools_config).__name__)
+            custom_tools_list = parse_custom_tools(self.hass, custom_tools_config)
             LOGGER.debug("Parsed %d custom tool(s)", len(custom_tools_list))
             for custom_tool in custom_tools_list:
                 LOGGER.debug("Adding custom tool '%s' to tools list", custom_tool.name)
