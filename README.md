@@ -257,6 +257,176 @@ automation:
           text: "{{ trigger.text }}"
 ```
 
+## Custom Tools
+
+The Custom Tools feature allows you to define custom tools in YAML that Claude can call to execute arbitrary Home Assistant services. This enables you to create specialized commands tailored to your smart home setup without writing custom code.
+
+### Overview
+
+Custom tools extend Claude's capabilities beyond the built-in Home Assistant controls. You can:
+- Define domain-specific tools for your unique devices (boiler schedulers, custom integrations, etc.)
+- Create complex automation workflows that Claude can trigger with natural language
+- Expose custom services from your integrations to Claude
+- Build multi-step sequences that execute as a single tool call
+
+### Configuration
+
+To add custom tools to your Claude integration:
+
+1. Go to **Settings > Devices & Services**
+2. Find the **Claude Vertex AI Conversation** integration
+3. Click **Configure**
+4. Select your conversation agent
+5. Scroll to the **Custom Tools (YAML)** field
+6. Add your custom tool definitions in YAML format
+7. Click **Submit** to save
+
+### YAML Schema
+
+Each custom tool follows this structure:
+
+```yaml
+- spec:
+    name: tool_name           # Unique tool name (snake_case, no spaces)
+    description: "..."        # Clear description of what the tool does (used by Claude)
+    parameters:
+      type: object
+      properties:
+        param_name:
+          type: string|number|integer|boolean|array|object
+          description: "..."  # Describe the parameter for Claude
+      required:
+        - param_name          # List required parameters
+  function:
+    type: script
+    sequence:
+      - service: domain.service
+        data:
+          key: "{{ param_name }}"  # Use Jinja2 templates to reference parameters
+        target:
+          entity_id: entity.id
+```
+
+### Examples
+
+#### Example 1: Boiler Scheduler
+
+Schedule your water heater or boiler to turn on at specific times:
+
+```yaml
+- spec:
+    name: schedule_boiler
+    description: "Schedule the water heater/boiler to turn on at specific times throughout the day. Use this when the user wants to set heating times."
+    parameters:
+      type: object
+      properties:
+        slots:
+          type: array
+          description: "Array of time slots with hour (0-23), minute (0-59), and isActive (true/false). Example: [{hour: 6, minute: 0, isActive: true}, {hour: 18, minute: 30, isActive: true}]"
+      required:
+        - slots
+  function:
+    type: script
+    sequence:
+      - service: timer_24h.set_slots
+        data:
+          entity_id: sensor.boiler_boiler
+          slots: "{{ slots }}"
+```
+
+**Usage**: "Schedule the boiler to turn on at 6 AM and 6:30 PM"
+
+#### Example 2: Party Mode Lighting
+
+Activate colorful party mode lighting with adjustable brightness:
+
+```yaml
+- spec:
+    name: party_mode
+    description: "Activate party mode lighting with colorful effects in the living room. Perfect for celebrations and gatherings."
+    parameters:
+      type: object
+      properties:
+        brightness:
+          type: integer
+          description: "Brightness level from 0 to 255, where 255 is maximum brightness"
+      required:
+        - brightness
+  function:
+    type: script
+    sequence:
+      - service: light.turn_on
+        target:
+          entity_id: light.living_room
+        data:
+          brightness: "{{ brightness }}"
+          effect: "colorloop"
+```
+
+**Usage**: "Turn on party mode at 80% brightness"
+
+#### Example 3: Multi-Step Morning Routine
+
+Execute a complex morning routine with multiple devices:
+
+```yaml
+- spec:
+    name: morning_routine
+    description: "Execute the morning routine: open blinds, turn on lights, start coffee maker, and set climate to comfort mode"
+    parameters:
+      type: object
+      properties:
+        skip_coffee:
+          type: boolean
+          description: "Set to true to skip starting the coffee maker"
+      required: []
+  function:
+    type: script
+    sequence:
+      - service: cover.open_cover
+        target:
+          entity_id: cover.bedroom_blinds
+      - service: light.turn_on
+        target:
+          entity_id: light.bedroom
+        data:
+          brightness: 128
+      - if:
+          - condition: template
+            value_template: "{{ not skip_coffee }}"
+        then:
+          - service: switch.turn_on
+            target:
+              entity_id: switch.coffee_maker
+      - service: climate.set_preset_mode
+        target:
+          entity_id: climate.bedroom
+        data:
+          preset_mode: "comfort"
+```
+
+**Usage**: "Run my morning routine" or "Start morning routine but skip the coffee"
+
+### Notes and Best Practices
+
+- **Unique Tool Names**: Each tool name must be unique across all custom tools. Tool names cannot use reserved names like `web_search`, `get_attributes`, `execute_services`, etc.
+
+- **Naming Convention**: Use `snake_case` for tool names (e.g., `schedule_boiler`, `party_mode`, not `scheduleBoiler` or `Party Mode`)
+
+- **Clear Descriptions**: Write descriptive `description` fields to help Claude understand when to use the tool. Include use cases and context.
+
+- **Parameter Descriptions**: Provide detailed parameter descriptions so Claude knows what values to pass. Include valid ranges, formats, and examples.
+
+- **Jinja2 Templates**: All parameter values support Jinja2 templating for dynamic data. Templates are sandboxed for security - only safe operations are allowed.
+
+- **Service Timeouts**: Service calls have a 30-second timeout. If your service takes longer, consider breaking it into multiple tools or using automations.
+
+- **Error Handling**: Errors during tool execution are logged to Home Assistant logs under `custom_components.claude_vertex_ai_conversation`. Check logs if tools aren't working as expected.
+
+- **Testing**: Test your custom tools manually first using Home Assistant's Developer Tools > Services before adding them to Claude.
+
+- **YAML Validation**: Invalid YAML will prevent the integration from loading. Use a YAML validator if you encounter issues.
+
 ## Troubleshooting
 
 ### Common Issues
