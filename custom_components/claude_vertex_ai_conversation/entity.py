@@ -96,15 +96,47 @@ from .custom_tools import CustomTool, parse_custom_tools
 # Max number of back and forth with the LLM to generate a response
 MAX_TOOL_ITERATIONS = 10
 
+# Keys that are not supported at the top level of Anthropic tool schemas
+_INVALID_SCHEMA_KEYS = ("oneOf", "allOf", "anyOf")
+
+
+def _has_invalid_schema(input_schema: dict[str, Any]) -> bool:
+    """Check if schema has oneOf/allOf/anyOf at top level (unsupported by Anthropic).
+
+    TODO: Remove this workaround once Home Assistant Core fixes the schema issue.
+    Tracking issues:
+    - https://github.com/home-assistant/core/issues/160471
+    - https://github.com/home-assistant/core/issues/160462
+    """
+    return any(key in input_schema for key in _INVALID_SCHEMA_KEYS)
+
 
 def _format_tool(
     tool: llm.Tool, custom_serializer: Callable[[Any], Any] | None
-) -> ToolParam:
-    """Format tool specification."""
+) -> ToolParam | None:
+    """Format tool specification.
+
+    Returns None if the tool has an invalid schema that Anthropic API doesn't support.
+    """
+    input_schema = convert(tool.parameters, custom_serializer=custom_serializer)
+
+    # TODO: Remove this workaround once Home Assistant Core fixes the schema issue.
+    # Tracking issues:
+    # - https://github.com/home-assistant/core/issues/160471
+    # - https://github.com/home-assistant/core/issues/160462
+    if _has_invalid_schema(input_schema):
+        LOGGER.warning(
+            "Skipping tool '%s' because its schema contains unsupported constructs "
+            "(oneOf/allOf/anyOf at top level). This is a known Home Assistant issue. "
+            "See: https://github.com/home-assistant/core/issues/160471",
+            tool.name,
+        )
+        return None
+
     tool_param = ToolParam(
         name=tool.name,
         description=tool.description or "",
-        input_schema=convert(tool.parameters, custom_serializer=custom_serializer),
+        input_schema=input_schema,
     )
     LOGGER.debug("Formatted tool '%s' with description: %s", tool.name, tool.description)
     return tool_param
@@ -701,28 +733,39 @@ class AnthropicBaseLLMEntity(Entity):
 
         tools: list[ToolUnionParam] = []
         if chat_log.llm_api:
+            # Filter out None values from tools with invalid schemas
+            # TODO: Remove this filtering once Home Assistant Core fixes the schema issue.
+            # Tracking issues:
+            # - https://github.com/home-assistant/core/issues/160471
+            # - https://github.com/home-assistant/core/issues/160462
             tools = [
-                _format_tool(tool, chat_log.llm_api.custom_serializer)
+                tool_param
                 for tool in chat_log.llm_api.tools
+                if (tool_param := _format_tool(tool, chat_log.llm_api.custom_serializer))
+                is not None
             ]
 
         # Parse and add custom tools
         custom_tools_config = options.get(CONF_CUSTOM_TOOLS)
         custom_tools_list: list[CustomTool] = []
+        formatted_custom_count = 0
         if custom_tools_config:
             LOGGER.debug("Parsing custom tools from config (type: %s)", type(custom_tools_config).__name__)
             custom_tools_list = parse_custom_tools(self.hass, custom_tools_config)
             LOGGER.debug("Parsed %d custom tool(s)", len(custom_tools_list))
             for custom_tool in custom_tools_list:
                 LOGGER.debug("Adding custom tool '%s' to tools list", custom_tool.name)
-                tools.append(_format_tool(
+                formatted_tool = _format_tool(
                     custom_tool,
                     chat_log.llm_api.custom_serializer if chat_log.llm_api else None
-                ))
+                )
+                if formatted_tool is not None:
+                    tools.append(formatted_tool)
+                    formatted_custom_count += 1
 
         # Store custom tools for execution lookup
         self._custom_tools = {tool.name: tool for tool in custom_tools_list}
-        LOGGER.debug("Total tools available: %d (including %d custom tools)", len(tools), len(custom_tools_list))
+        LOGGER.debug("Total tools available: %d (including %d custom tools)", len(tools), formatted_custom_count)
 
         if options.get(CONF_WEB_SEARCH):
             web_search = WebSearchTool20250305Param(
